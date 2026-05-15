@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body{
+  background: radial-gradient(circle at top left, rgba(255,223,0,.20), transparent 28rem),
+              radial-gradient(circle at top right, rgba(0,156,59,.17), transparent 26rem),
+              #F0F4F8;
+  color:#0D1B2A;
+}
+.card-brasil{@apply rounded-3xl bg-white shadow-sm border border-slate-100;}
+.section-title{@apply border-l-4 border-brasil-amarelo pl-4 text-3xl font-black tracking-tight text-brasil-azul;}
+.sticker-card{
+  background:linear-gradient(145deg,#f7d060 0%,#fff8d0 48%,#e8b830 100%);
+  border:2px solid rgba(190,130,20,.35);
+}

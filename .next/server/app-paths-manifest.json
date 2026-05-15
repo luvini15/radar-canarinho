@@ -1,0 +1,6 @@
+{
+  "/page": "app/page.js",
+  "/api/matches/route": "app/api/matches/route.js",
+  "/api/player-media/route": "app/api/player-media/route.js",
+  "/api/sheets/route": "app/api/sheets/route.js"
+}
