@@ -1,6 +1,8 @@
 {
-  "/page": "app/page.js",
-  "/api/matches/route": "app/api/matches/route.js",
+  "/_not-found/page": "app/_not-found/page.js",
   "/api/player-media/route": "app/api/player-media/route.js",
-  "/api/sheets/route": "app/api/sheets/route.js"
+  "/api/sheets/route": "app/api/sheets/route.js",
+  "/api/matches/route": "app/api/matches/route.js",
+  "/api/refresh/route": "app/api/refresh/route.js",
+  "/page": "app/page.js"
 }
