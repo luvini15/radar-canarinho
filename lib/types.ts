@@ -1,24 +1,40 @@
 export type InstagramSnapshot = {
-  dataColeta:string;
-  nome:string;
-  username:string;
-  seguidores:number;
+  dataColeta: string;
+  nome: string;
+  username: string;
+  seguidores: number;
+};
+
+export type EditorialPlayer = {
+  username: string;
+  name: string;
+  posicao: string;
+  grupoPosicao: string;
+  clube: string;
+  statusConvocacao: string;
+  fotoUrl: string;
+  escudoUrl: string;
+  observacaoEditorial: string;
 };
 
 export type PlayerSummary = InstagramSnapshot & {
-  crescimento7d:number;
-  crescimento15d:number;
-  crescimento30d:number;
-  posicaoRanking:number;
-  grupoPosicao:string;
-  clube:string;
-};
-
-export type PlayerMedia = {
+  crescimento1d: number;
+  crescimento3d: number;
+  crescimento5d: number;
+  crescimento7d: number;
+  crescimento10d: number;
+  crescimento15d: number;
+  crescimento30d: number;
+  crescimentoPeriodo: number;
+  crescimentoPercentualPeriodo: number;
+  posicaoRanking: number;
+  grupoPosicao: string;
+  clube: string;
+  posicao: string;
+  statusConvocacao: string;
   fotoUrl: string;
-  clubeApi: string;
   escudoUrl: string;
-  posicaoApi: string;
+  observacaoEditorial: string;
 };
 
 export type Match = {
