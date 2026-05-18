@@ -138,7 +138,11 @@ export function latestByPlayer(
     });
   }
 
-  return out
+  const onlyConvocados = out.filter((p) =>
+    normalizeKey(p.statusConvocacao).includes("convocado")
+  );
+
+  return onlyConvocados
     .sort((a, b) => b.seguidores - a.seguidores)
     .map((p, i) => ({ ...p, posicaoRanking: i + 1 }));
 }
