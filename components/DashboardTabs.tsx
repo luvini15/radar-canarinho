@@ -47,11 +47,17 @@ const periodOptions = [
   { value: "30", label: "30 dias" },
 ];
 
-function growthPercent(player?: PlayerSummary): string {
+function growthPercent(player?: PlayerSummary, period?: string): string {
   if (!player) return "0,00%";
-  return `${(player.crescimentoPercentualPeriodo ?? 0)
-    .toFixed(2)
-    .replace(".", ",")}%`;
+
+  const growth = getGrowthByPeriod(player, period ?? "7");
+  const previous = player.seguidores - growth;
+
+  if (!previous || previous <= 0) return "0,00%";
+
+  const percent = (growth / previous) * 100;
+
+  return `${percent.toFixed(2).replace(".", ",")}%`;
 }
 
 export function DashboardTabs({
@@ -75,10 +81,19 @@ export function DashboardTabs({
   const [matches, setMatches] = useState<Match[]>([]);
 
   const players = useMemo(() => {
-    return initialPlayers.map((p) => ({
-      ...p,
-      crescimentoPeriodo: getGrowthByPeriod(p, period),
-    }));
+    return initialPlayers.map((p) => {
+      const crescimentoPeriodo = getGrowthByPeriod(p, period);
+      const baseAnterior = p.seguidores - crescimentoPeriodo;
+
+      const crescimentoPercentualPeriodo =
+        baseAnterior > 0 ? (crescimentoPeriodo / baseAnterior) * 100 : 0;
+
+      return {
+        ...p,
+        crescimentoPeriodo,
+        crescimentoPercentualPeriodo,
+      };
+    });
   }, [initialPlayers, period]);
 
   const names = players.map((p) => p.nome);
@@ -166,7 +181,7 @@ export function DashboardTabs({
               title={`Maior crescimento (${period}d)`}
               value={topGrowth?.nome ?? "-"}
               sub={`+${formatCompact(getGrowthByPeriod(topGrowth, period))} seguidores`}
-              detail={`${growthPercent(topGrowth)} no período`}
+              detail={`${growthPercent(topGrowth, period)} no período`}
             />
             <HeroKpi
               title="Total da Seleção"
@@ -195,7 +210,7 @@ export function DashboardTabs({
               title={`Crescimento em ${period} dias`}
               text={`${topGrowth?.nome} foi o maior destaque do período, com +${formatFull(
                 getGrowthByPeriod(topGrowth, period)
-              )} seguidores, equivalente a ${growthPercent(topGrowth)}.`}
+              )} seguidores, equivalente a ${growthPercent(topGrowth, period)}.`}
             />
             <Insight
               title="Concentração no topo"
@@ -545,7 +560,7 @@ function TopBars({ players, period }: { players: PlayerSummary[]; period: string
               />
             </div>
             <div className="mt-1 text-xs font-bold text-brasil-verde">
-              +{formatCompact(getGrowthByPeriod(p, period))} · {growthPercent(p)}
+              +{formatCompact(getGrowthByPeriod(p, period))} · {growthPercent(p, period)}
             </div>
           </div>
           <div className="text-right font-display text-3xl text-brasil-azul">
@@ -721,7 +736,7 @@ function Compare({
             Variação %
           </div>
           <div className="mt-1 font-display text-3xl text-brasil-azul">
-            {growthPercent(player)}
+            {growthPercent(player, period)}
           </div>
         </div>
       </div>
@@ -800,7 +815,7 @@ function ThermometerSection({
                 @{p.username} · {formatCompact(p.seguidores)} seguidores
               </div>
               <span className="mt-2 inline-block rounded-full bg-green-100 px-3 py-1 text-xs font-black text-green-700">
-                +{formatCompact(getGrowthByPeriod(p, period))} · {growthPercent(p)}
+                +{formatCompact(getGrowthByPeriod(p, period))} · {growthPercent(p, period)}
               </span>
             </div>
           ))}
