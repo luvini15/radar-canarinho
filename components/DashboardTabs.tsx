@@ -12,8 +12,14 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
-import type { InstagramSnapshot, Match, PlayerSummary } from "@/lib/types";
-import { formatCompact, formatFull, getGrowthByPeriod } from "@/lib/metrics";
+import type { InstagramSnapshot, PlayerSummary } from "@/lib/types";
+import {
+  formatCompact,
+  formatFull,
+  getGrowthBetweenDates,
+  getGrowthByPeriod,
+} from "@/lib/metrics";
+import { getEventsBetweenDates } from "@/lib/events";
 import { PlayerCard } from "./PlayerCard";
 import { RankingTable } from "./RankingTable";
 import {
@@ -45,19 +51,48 @@ const periodOptions = [
   { value: "10", label: "10 dias" },
   { value: "15", label: "15 dias" },
   { value: "30", label: "30 dias" },
+  { value: "custom", label: "Personalizado" },
 ];
 
-function growthPercent(player?: PlayerSummary, period?: string): string {
+function dateToBR(date?: string) {
+  if (!date) return "";
+  const [year, month, day] = date.split("-");
+  return `${day}/${month}/${year}`;
+}
+
+function getPeriodStartDate(endDate?: string, period = "7") {
+  if (!endDate) return "";
+
+  const date = new Date(`${endDate}T00:00:00`);
+  const days = Number(period);
+
+  if (!Number.isFinite(days)) return endDate;
+
+  date.setDate(date.getDate() - days);
+  return date.toISOString().slice(0, 10);
+}
+
+function periodLabel(period: string, startDate?: string, endDate?: string) {
+  if (period === "custom") {
+    if (startDate && endDate) return `${dateToBR(startDate)} a ${dateToBR(endDate)}`;
+    return "período personalizado";
+  }
+
+  const option = periodOptions.find((item) => item.value === period);
+  return option?.label ?? `${period} dias`;
+}
+
+function growthPercent(player?: PlayerSummary): string {
   if (!player) return "0,00%";
+  return `${(player.crescimentoPercentualPeriodo ?? 0).toFixed(2).replace(".", ",")}%`;
+}
 
-  const growth = getGrowthByPeriod(player, period ?? "7");
-  const previous = player.seguidores - growth;
+function getPlayerGrowth(player?: PlayerSummary) {
+  return player?.crescimentoPeriodo ?? 0;
+}
 
-  if (!previous || previous <= 0) return "0,00%";
-
-  const percent = (growth / previous) * 100;
-
-  return `${percent.toFixed(2).replace(".", ",")}%`;
+function formatEventDate(date: string) {
+  return dateToBR(date);
 }
 
 export function DashboardTabs({
@@ -73,15 +108,45 @@ export function DashboardTabs({
   const [query, setQuery] = useState("");
   const [pos, setPos] = useState("Todas");
   const [period, setPeriod] = useState("7");
+  const [customStartDate, setCustomStartDate] = useState(latestDate ?? "");
+  const [customEndDate, setCustomEndDate] = useState(latestDate ?? "");
   const [order, setOrder] = useState("seguidores");
   const [selected, setSelected] = useState<string[]>([]);
   const [a, setA] = useState("");
   const [b, setB] = useState("");
   const [refreshing, setRefreshing] = useState(false);
-  const [matches, setMatches] = useState<Match[]>([]);
+  const [showEvents, setShowEvents] = useState(false);
+
+  const effectiveStartDate =
+    period === "custom" ? customStartDate : getPeriodStartDate(latestDate, period);
+
+  const effectiveEndDate = period === "custom" ? customEndDate : latestDate ?? "";
+
+  const labelPeriodo = periodLabel(period, effectiveStartDate, effectiveEndDate);
+
+  const selectedEvents =
+    effectiveStartDate && effectiveEndDate
+      ? getEventsBetweenDates(effectiveStartDate, effectiveEndDate)
+      : [];
 
   const players = useMemo(() => {
     return initialPlayers.map((p) => {
+      if (period === "custom") {
+        const customGrowth = getGrowthBetweenDates(
+          rows,
+          p.nome,
+          customStartDate,
+          customEndDate
+        );
+
+        return {
+          ...p,
+          crescimento7d: customGrowth.growth,
+          crescimentoPeriodo: customGrowth.growth,
+          crescimentoPercentualPeriodo: customGrowth.percent,
+        };
+      }
+
       const crescimentoPeriodo = getGrowthByPeriod(p, period);
       const baseAnterior = p.seguidores - crescimentoPeriodo;
 
@@ -94,7 +159,7 @@ export function DashboardTabs({
         crescimentoPercentualPeriodo,
       };
     });
-  }, [initialPlayers, period]);
+  }, [initialPlayers, period, rows, customStartDate, customEndDate]);
 
   const names = players.map((p) => p.nome);
   const pA = players.find((p) => p.nome === (a || names[0])) ?? players[0];
@@ -105,16 +170,14 @@ export function DashboardTabs({
     .filter((p) => !query || p.nome.toLowerCase().includes(query.toLowerCase()))
     .sort((x, y) =>
       order === "crescimento"
-        ? getGrowthByPeriod(y, period) - getGrowthByPeriod(x, period)
+        ? getPlayerGrowth(y) - getPlayerGrowth(x)
         : y.seguidores - x.seguidores
     );
 
   const leader = players[0];
   const second = players[1];
   const total = players.reduce((acc, p) => acc + p.seguidores, 0);
-  const topGrowth = [...players].sort(
-    (x, y) => getGrowthByPeriod(y, period) - getGrowthByPeriod(x, period)
-  )[0];
+  const topGrowth = [...players].sort((x, y) => getPlayerGrowth(y) - getPlayerGrowth(x))[0];
   const top10sum = players.slice(0, 10).reduce((acc, p) => acc + p.seguidores, 0);
   const top10pct = total ? (top10sum / total) * 100 : 0;
 
@@ -128,6 +191,15 @@ export function DashboardTabs({
     }
   }
 
+  const periodSelectorProps = {
+    period,
+    setPeriod,
+    customStartDate,
+    setCustomStartDate,
+    customEndDate,
+    setCustomEndDate,
+  };
+
   return (
     <div>
       <div className="sticky top-0 z-20 bg-brasil-fundo/90 py-4 backdrop-blur">
@@ -140,13 +212,12 @@ export function DashboardTabs({
               return (
                 <button
                   key={tab.id}
-                  onClick={() => {
-                    setActive(tab.id);
-                  }}
-                  className={`flex shrink-0 items-center gap-2 rounded-2xl px-4 py-3 text-sm font-black transition ${selectedTab
-                    ? "bg-brasil-verde text-white shadow"
-                    : "text-slate-500 hover:bg-slate-50 hover:text-brasil-azul"
-                    }`}
+                  onClick={() => setActive(tab.id)}
+                  className={`flex shrink-0 items-center gap-2 rounded-2xl px-4 py-3 text-sm font-black transition ${
+                    selectedTab
+                      ? "bg-brasil-verde text-white shadow"
+                      : "text-slate-500 hover:bg-slate-50 hover:text-brasil-azul"
+                  }`}
                 >
                   <Icon size={16} />
                   {tab.label}
@@ -166,6 +237,47 @@ export function DashboardTabs({
         </div>
       </div>
 
+
+      {selectedEvents.length > 0 && (
+        <div className="mb-6 rounded-3xl bg-white p-5 shadow-sm">
+          <button
+            onClick={() => setShowEvents((v) => !v)}
+            className="flex w-full items-center justify-between font-black text-brasil-azul"
+          >
+            <span>Eventos-chave no período</span>
+            <span>{showEvents ? "Fechar" : "Abrir"}</span>
+          </button>
+
+          {showEvents && (
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {selectedEvents.map((event) => (
+                <div
+                  key={`${event.date}-${event.title}`}
+                  className="rounded-2xl border border-slate-100 bg-slate-50 p-4"
+                >
+                  <div className="text-xs font-black uppercase text-brasil-verde">
+                    {dateToBR(event.date)}
+                    {event.endDate ? ` a ${dateToBR(event.endDate)}` : ""} · {event.type}
+                  </div>
+
+                  <div className="mt-1 font-black text-brasil-azul">
+                    {event.title}
+                  </div>
+
+                  <div className="mt-1 text-sm text-slate-600">
+                    {event.description}
+                  </div>
+
+                  <div className="mt-2 text-xs font-bold text-brasil-suave">
+                    Impacto esperado: {event.impact}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {active === "resumo" && (
         <section className="space-y-8">
           <SourceCard latestDate={latestDate} />
@@ -178,10 +290,10 @@ export function DashboardTabs({
               detail={`${formatCompact(leader?.seguidores ?? 0)} seguidores`}
             />
             <HeroKpi
-              title={`Maior crescimento (${period}d)`}
+              title={`Maior crescimento (${labelPeriodo})`}
               value={topGrowth?.nome ?? "-"}
-              sub={`+${formatCompact(getGrowthByPeriod(topGrowth, period))} seguidores`}
-              detail={`${growthPercent(topGrowth, period)} no período`}
+              sub={`+${formatCompact(getPlayerGrowth(topGrowth))} seguidores`}
+              detail={`${growthPercent(topGrowth)} no período`}
             />
             <HeroKpi
               title="Total da Seleção"
@@ -204,13 +316,13 @@ export function DashboardTabs({
               title="Domínio digital"
               text={`${leader?.nome} lidera com ${formatFull(
                 leader?.seguidores ?? 0
-              )} seguidores — uma concentração relevante dentro da pré-lista.`}
+              )} seguidores — uma concentração relevante dentro da convocação.`}
             />
             <Insight
-              title={`Crescimento em ${period} dias`}
-              text={`${topGrowth?.nome} foi o maior destaque do período, com +${formatFull(
-                getGrowthByPeriod(topGrowth, period)
-              )} seguidores, equivalente a ${growthPercent(topGrowth, period)}.`}
+              title={`Crescimento no período`}
+              text={`${topGrowth?.nome} foi o maior destaque em ${labelPeriodo}, com +${formatFull(
+                getPlayerGrowth(topGrowth)
+              )} seguidores, equivalente a ${growthPercent(topGrowth)}.`}
             />
             <Insight
               title="Concentração no topo"
@@ -220,13 +332,14 @@ export function DashboardTabs({
             />
             <Insight
               title="Grandes bases"
-              text={`${players.filter((p) => p.seguidores > 10_000_000).length
-                } jogadores ultrapassam 10 milhões de seguidores no Instagram.`}
+              text={`${
+                players.filter((p) => p.seguidores > 10_000_000).length
+              } jogadores ultrapassam 10 milhões de seguidores no Instagram.`}
             />
           </div>
 
           <h2 className="section-title">Top 5 — maior presença digital</h2>
-          <TopBars players={players.slice(0, 5)} period={period} />
+          <TopBars players={players.slice(0, 5)} />
           <TopFollowersChart players={players} />
         </section>
       )}
@@ -240,8 +353,7 @@ export function DashboardTabs({
           setPos={setPos}
           order={order}
           setOrder={setOrder}
-          period={period}
-          setPeriod={setPeriod}
+          {...periodSelectorProps}
         >
           <div className="mt-5 grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-5">
             {filtered.map((p) => (
@@ -260,8 +372,7 @@ export function DashboardTabs({
           setPos={setPos}
           order={order}
           setOrder={setOrder}
-          period={period}
-          setPeriod={setPeriod}
+          {...periodSelectorProps}
         >
           <div className="mt-5">
             <RankingTable players={filtered} />
@@ -270,8 +381,8 @@ export function DashboardTabs({
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             <Insight
               title="Maior crescimento"
-              text={`${topGrowth?.nome} lidera o crescimento em ${period} dias, com +${formatFull(
-                getGrowthByPeriod(topGrowth, period)
+              text={`${topGrowth?.nome} lidera o crescimento em ${labelPeriodo}, com +${formatFull(
+                getPlayerGrowth(topGrowth)
               )} seguidores.`}
             />
             <Insight
@@ -300,20 +411,10 @@ export function DashboardTabs({
               <option value="crescimento">Maior crescimento</option>
             </select>
 
-            <select
-              value={period}
-              onChange={(e) => setPeriod(e.target.value)}
-              className="rounded-xl border p-3 font-bold"
-            >
-              {periodOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <PeriodSelector {...periodSelectorProps} />
           </div>
 
-          <Lineup players={players} order={order} period={period} />
+          <Lineup players={players} order={order} />
         </section>
       )}
 
@@ -323,13 +424,19 @@ export function DashboardTabs({
 
           <div className="mt-5 grid gap-4 md:grid-cols-[1fr_auto_1fr] md:items-start">
             <Select names={names} value={a || names[0]} setValue={setA} />
-            <div className="self-center text-center font-display text-5xl text-slate-400">VS</div>
+            <div className="self-center text-center font-display text-5xl text-slate-400">
+              VS
+            </div>
             <Select names={names} value={b || names[1]} setValue={setB} />
           </div>
 
+          <div className="mt-5">
+            <PeriodSelector {...periodSelectorProps} />
+          </div>
+
           <div className="mt-5 grid gap-4 md:grid-cols-2">
-            <Compare player={pA} period={period} />
-            <Compare player={pB} period={period} yellow />
+            <Compare player={pA} yellow={false} />
+            <Compare player={pB} yellow />
           </div>
 
           <div className="mt-8">
@@ -360,10 +467,10 @@ export function DashboardTabs({
             />
 
             <Insight
-              title={`Diferença de crescimento em ${period} dias`}
-              text={`A diferença de crescimento entre os dois é de ${formatFull(
-                Math.abs(getGrowthByPeriod(pA, period) - getGrowthByPeriod(pB, period))
-              )} seguidores no período.`}
+              title={`Diferença de crescimento`}
+              text={`A diferença de crescimento entre os dois em ${labelPeriodo} é de ${formatFull(
+                Math.abs(getPlayerGrowth(pA) - getPlayerGrowth(pB))
+              )} seguidores.`}
             />
           </div>
 
@@ -375,17 +482,16 @@ export function DashboardTabs({
               )} seguidores contra ${formatCompact(pB?.seguidores ?? 0)} de ${pB?.nome}.`}
             />
             <Insight
-              title={`Crescimento em ${period} dias`}
+              title={`Crescimento no período`}
               text={`${pA?.nome}: +${formatFull(
-                getGrowthByPeriod(pA, period)
-              )}. ${pB?.nome}: +${formatFull(getGrowthByPeriod(pB, period))}.`}
+                getPlayerGrowth(pA)
+              )}. ${pB?.nome}: +${formatFull(getPlayerGrowth(pB))}.`}
             />
             <Insight
               title="Momentum"
-              text={`No período selecionado, ${getGrowthByPeriod(pA, period) >= getGrowthByPeriod(pB, period)
-                ? pA?.nome
-                : pB?.nome
-                } apresenta maior crescimento.`}
+              text={`No período selecionado, ${
+                getPlayerGrowth(pA) >= getPlayerGrowth(pB) ? pA?.nome : pB?.nome
+              } apresenta maior crescimento.`}
             />
           </div>
         </section>
@@ -404,8 +510,8 @@ export function DashboardTabs({
             />
             <Insight
               title="Destaque de crescimento"
-              text={`${topGrowth?.nome} se destaca no recorte de crescimento de ${period} dias, com +${formatFull(
-                getGrowthByPeriod(topGrowth, period)
+              text={`${topGrowth?.nome} se destaca em ${labelPeriodo}, com +${formatFull(
+                getPlayerGrowth(topGrowth)
               )} seguidores.`}
             />
           </div>
@@ -444,33 +550,26 @@ export function DashboardTabs({
               <option value="seguidores">Mais seguidores</option>
               <option value="crescimento">Maior crescimento</option>
             </select>
+
+            <PeriodSelector {...periodSelectorProps} />
           </div>
 
-          <select
-            value={period}
-            onChange={(e) => setPeriod(e.target.value)}
-            className="rounded-xl border p-3"
-          >
-            {periodOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-
-          <div className="mt-3 flex flex-wrap gap-2">
+                    <div className="mt-3 flex flex-wrap gap-2">
             {filtered.slice(0, 16).map((p) => (
               <button
                 key={p.username}
                 onClick={() =>
                   setSelected((s) =>
-                    s.includes(p.nome) ? s.filter((x) => x !== p.nome) : [...s, p.nome]
+                    s.includes(p.nome)
+                      ? s.filter((x) => x !== p.nome)
+                      : [...s, p.nome]
                   )
                 }
-                className={`rounded-full px-3 py-2 text-xs font-bold ${selected.includes(p.nome)
-                  ? "bg-brasil-verde text-white"
-                  : "bg-white text-brasil-azul"
-                  }`}
+                className={`rounded-full px-3 py-2 text-xs font-bold ${
+                  selected.includes(p.nome)
+                    ? "bg-brasil-verde text-white"
+                    : "bg-white text-brasil-azul"
+                }`}
               >
                 {p.nome}
               </button>
@@ -488,8 +587,8 @@ export function DashboardTabs({
             />
             <Insight
               title="Destaque do período"
-              text={`${topGrowth?.nome} é o maior crescimento no período selecionado, com +${formatFull(
-                getGrowthByPeriod(topGrowth, period)
+              text={`${topGrowth?.nome} é o maior crescimento em ${labelPeriodo}, com +${formatFull(
+                getPlayerGrowth(topGrowth)
               )} seguidores.`}
             />
           </div>
@@ -497,9 +596,74 @@ export function DashboardTabs({
       )}
 
       {active === "termometro" && (
-        <ThermometerSection players={players} period={period} setPeriod={setPeriod} />
+        <ThermometerSection
+          players={players}
+          period={period}
+          setPeriod={setPeriod}
+          customStartDate={customStartDate}
+          setCustomStartDate={setCustomStartDate}
+          customEndDate={customEndDate}
+          setCustomEndDate={setCustomEndDate}
+        />
       )}
+    </div>
+  );
+}
 
+type PeriodSelectorProps = {
+  period: string;
+  setPeriod: (v: string) => void;
+  customStartDate: string;
+  setCustomStartDate: (v: string) => void;
+  customEndDate: string;
+  setCustomEndDate: (v: string) => void;
+};
+
+function PeriodSelector({
+  period,
+  setPeriod,
+  customStartDate,
+  setCustomStartDate,
+  customEndDate,
+  setCustomEndDate,
+}: PeriodSelectorProps) {
+  return (
+    <div className="flex flex-col gap-3">
+      <select
+        value={period}
+        onChange={(e) => setPeriod(e.target.value)}
+        className="rounded-xl border p-3 font-bold"
+      >
+        {periodOptions.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.value === "custom" ? "Personalizado" : `Crescimento ${option.label}`}
+          </option>
+        ))}
+      </select>
+
+      {period === "custom" && (
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="flex flex-col gap-1 text-xs font-black uppercase text-brasil-suave">
+            Data inicial
+            <input
+              type="date"
+              value={customStartDate}
+              onChange={(e) => setCustomStartDate(e.target.value)}
+              className="rounded-xl border p-3 text-sm font-bold text-slate-700"
+            />
+          </label>
+
+          <label className="flex flex-col gap-1 text-xs font-black uppercase text-brasil-suave">
+            Data final
+            <input
+              type="date"
+              value={customEndDate}
+              onChange={(e) => setCustomEndDate(e.target.value)}
+              className="rounded-xl border p-3 text-sm font-bold text-slate-700"
+            />
+          </label>
+        </div>
+      )}
     </div>
   );
 }
@@ -508,7 +672,9 @@ function SourceCard({ latestDate }: { latestDate?: string }) {
   return (
     <div className="rounded-3xl bg-white p-5 shadow-sm">
       <div className="font-black text-brasil-azul">Fonte: Google Sheets via Supermetrics</div>
-      <p className="text-sm text-brasil-suave">Última coleta: {latestDate ?? "não encontrada"}.</p>
+      <p className="text-sm text-brasil-suave">
+        Última coleta: {latestDate ?? "não encontrada"}.
+      </p>
     </div>
   );
 }
@@ -543,7 +709,7 @@ function Insight({ title, text }: { title: string; text: string }) {
   );
 }
 
-function TopBars({ players, period }: { players: PlayerSummary[]; period: string }) {
+function TopBars({ players }: { players: PlayerSummary[] }) {
   const max = players[0]?.seguidores || 1;
 
   return (
@@ -560,7 +726,7 @@ function TopBars({ players, period }: { players: PlayerSummary[]; period: string
               />
             </div>
             <div className="mt-1 text-xs font-bold text-brasil-verde">
-              +{formatCompact(getGrowthByPeriod(p, period))} · {growthPercent(p, period)}
+              +{formatCompact(getPlayerGrowth(p))} · {growthPercent(p)}
             </div>
           </div>
           <div className="text-right font-display text-3xl text-brasil-azul">
@@ -606,17 +772,14 @@ function FilteredSection(props: any) {
           <option value="crescimento">Maior crescimento</option>
         </select>
 
-        <select
-          className="rounded-xl border p-3"
-          value={props.period}
-          onChange={(e: any) => props.setPeriod(e.target.value)}
-        >
-          {periodOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              Crescimento {option.label}
-            </option>
-          ))}
-        </select>
+        <PeriodSelector
+          period={props.period}
+          setPeriod={props.setPeriod}
+          customStartDate={props.customStartDate}
+          setCustomStartDate={props.setCustomStartDate}
+          customEndDate={props.customEndDate}
+          setCustomEndDate={props.setCustomEndDate}
+        />
       </div>
 
       {props.children}
@@ -627,28 +790,21 @@ function FilteredSection(props: any) {
 function Lineup({
   players,
   order,
-  period,
 }: {
   players: PlayerSummary[];
   order: string;
-  period: string;
 }) {
   const sort = (arr: PlayerSummary[]) =>
     [...arr].sort((a, b) =>
       order === "crescimento"
-        ? getGrowthByPeriod(b, period) - getGrowthByPeriod(a, period)
+        ? getPlayerGrowth(b) - getPlayerGrowth(a)
         : b.seguidores - a.seguidores
     );
 
   const pick = (g: string, n: number) =>
     sort(players.filter((p) => p.grupoPosicao === g)).slice(0, n);
 
-  const lines = [
-    pick("Ataque", 3),
-    pick("Meio-campo", 3),
-    pick("Defesa", 4),
-    pick("Goleiro", 1),
-  ];
+  const lines = [pick("Ataque", 3), pick("Meio-campo", 3), pick("Defesa", 4), pick("Goleiro", 1)];
 
   return (
     <div className="mt-5 rounded-[2rem] border-4 border-white/70 bg-gradient-to-b from-[#0d9440] via-[#0a7c37] to-[#0d9440] p-6 shadow-xl">
@@ -661,7 +817,7 @@ function Lineup({
 
                 {order === "crescimento" && (
                   <div className="mt-2 rounded-full bg-green-100 px-3 py-2 text-center text-xs font-black text-green-700">
-                    +{formatFull(getGrowthByPeriod(p, period))} seguidores
+                    +{formatFull(getPlayerGrowth(p))} seguidores
                   </div>
                 )}
               </div>
@@ -699,19 +855,18 @@ function Select({
 
 function Compare({
   player,
-  period,
   yellow = false,
 }: {
   player?: PlayerSummary;
-  period: string;
   yellow?: boolean;
 }) {
   if (!player) return null;
 
   return (
     <div
-      className={`rounded-3xl border-t-4 ${yellow ? "border-t-brasil-amarelo" : "border-t-brasil-verde"
-        } bg-white p-6 shadow-sm`}
+      className={`rounded-3xl border-t-4 ${
+        yellow ? "border-t-brasil-amarelo" : "border-t-brasil-verde"
+      } bg-white p-6 shadow-sm`}
     >
       <h3 className="font-black text-brasil-azul">{player.nome}</h3>
       <p className="text-sm text-brasil-suave">@{player.username}</p>
@@ -719,15 +874,17 @@ function Compare({
       <div className="mt-4 font-display text-5xl text-brasil-azul">
         {formatCompact(player.seguidores)}
       </div>
-      <p className="text-xs font-bold uppercase text-brasil-suave">seguidores totais</p>
+      <p className="text-xs font-bold uppercase text-brasil-suave">
+        seguidores totais
+      </p>
 
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         <div className="rounded-2xl bg-slate-50 p-4">
           <div className="text-xs font-black uppercase text-slate-500">
-            Crescimento {period}d
+            Crescimento
           </div>
           <div className="mt-1 font-display text-3xl text-brasil-verde">
-            +{formatFull(getGrowthByPeriod(player, period))}
+            +{formatFull(getPlayerGrowth(player))}
           </div>
         </div>
 
@@ -736,7 +893,7 @@ function Compare({
             Variação %
           </div>
           <div className="mt-1 font-display text-3xl text-brasil-azul">
-            {growthPercent(player, period)}
+            {growthPercent(player)}
           </div>
         </div>
       </div>
@@ -748,10 +905,18 @@ function ThermometerSection({
   players,
   period,
   setPeriod,
+  customStartDate,
+  setCustomStartDate,
+  customEndDate,
+  setCustomEndDate,
 }: {
   players: PlayerSummary[];
   period: string;
   setPeriod: (v: string) => void;
+  customStartDate: string;
+  setCustomStartDate: (v: string) => void;
+  customEndDate: string;
+  setCustomEndDate: (v: string) => void;
 }) {
   const thresholdByPeriod: Record<string, number> = {
     "1": 10000,
@@ -761,35 +926,27 @@ function ThermometerSection({
     "10": 70000,
     "15": 100000,
     "30": 150000,
+    custom: 50000,
   };
 
   const threshold = thresholdByPeriod[period] ?? 50000;
-  const high = players.filter(
-    (p) => getGrowthByPeriod(p, period) > threshold
-  );
-  const mid = players.filter(
-    (p) =>
-      getGrowthByPeriod(p, period) <= threshold &&
-      getGrowthByPeriod(p, period) > 0
-  );
-  const low = players.filter((p) => getGrowthByPeriod(p, period) <= 0);
+  const high = players.filter((p) => getPlayerGrowth(p) > threshold);
+  const mid = players.filter((p) => getPlayerGrowth(p) <= threshold && getPlayerGrowth(p) > 0);
+  const low = players.filter((p) => getPlayerGrowth(p) <= 0);
 
   return (
     <section>
       <h2 className="section-title">Termômetro de crescimento</h2>
 
       <div className="mt-5">
-        <select
-          className="rounded-xl border p-3"
-          value={period}
-          onChange={(e) => setPeriod(e.target.value)}
-        >
-          {periodOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+        <PeriodSelector
+          period={period}
+          setPeriod={setPeriod}
+          customStartDate={customStartDate}
+          setCustomStartDate={setCustomStartDate}
+          customEndDate={customEndDate}
+          setCustomEndDate={setCustomEndDate}
+        />
       </div>
 
       <div className="mt-5 grid gap-4 md:grid-cols-4">
@@ -803,7 +960,7 @@ function ThermometerSection({
 
       <div className="mt-5 grid gap-4 md:grid-cols-2">
         {[...players]
-          .sort((a, b) => getGrowthByPeriod(b, period) - getGrowthByPeriod(a, period))
+          .sort((a, b) => getPlayerGrowth(b) - getPlayerGrowth(a))
           .slice(0, 8)
           .map((p) => (
             <div
@@ -815,7 +972,7 @@ function ThermometerSection({
                 @{p.username} · {formatCompact(p.seguidores)} seguidores
               </div>
               <span className="mt-2 inline-block rounded-full bg-green-100 px-3 py-1 text-xs font-black text-green-700">
-                +{formatCompact(getGrowthByPeriod(p, period))} · {growthPercent(p, period)}
+                +{formatCompact(getPlayerGrowth(p))} · {growthPercent(p)}
               </span>
             </div>
           ))}
@@ -823,4 +980,3 @@ function ThermometerSection({
     </section>
   );
 }
-

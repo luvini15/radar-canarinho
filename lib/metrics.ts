@@ -156,3 +156,32 @@ export function getGrowthByPeriod(p: PlayerSummary, period: string) {
   if (period === "30") return p.crescimento30d;
   return p.crescimento7d;
 }
+
+export function getGrowthBetweenDates(
+  rows: InstagramSnapshot[],
+  playerName: string,
+  startDate: string,
+  endDate: string
+) {
+  const playerRows = rows
+    .filter((r) => r.nome === playerName)
+    .sort((a, b) => a.dataColeta.localeCompare(b.dataColeta));
+
+  const start = playerRows.filter((r) => r.dataColeta <= startDate).slice(-1)[0];
+  const end = playerRows.filter((r) => r.dataColeta <= endDate).slice(-1)[0];
+
+  if (!start || !end) {
+    return {
+      growth: 0,
+      percent: 0,
+    };
+  }
+
+  const growth = end.seguidores - start.seguidores;
+  const percent = start.seguidores > 0 ? (growth / start.seguidores) * 100 : 0;
+
+  return {
+    growth,
+    percent,
+  };
+}
