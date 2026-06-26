@@ -17,7 +17,6 @@ import {
   formatCompact,
   formatFull,
   getGrowthBetweenDates,
-  getGrowthByPeriod,
 } from "@/lib/metrics";
 import { getEventsBetweenDates } from "@/lib/events";
 import { PlayerCard } from "./PlayerCard";
@@ -43,16 +42,6 @@ const tabs = [
 
 type TabId = (typeof tabs)[number]["id"];
 
-const periodOptions = [
-  { value: "1", label: "1 dia" },
-  { value: "3", label: "3 dias" },
-  { value: "5", label: "5 dias" },
-  { value: "7", label: "7 dias" },
-  { value: "10", label: "10 dias" },
-  { value: "15", label: "15 dias" },
-  { value: "30", label: "30 dias" },
-  { value: "custom", label: "Personalizado" },
-];
 
 function dateToBR(date?: string) {
   if (!date) return "";
@@ -60,26 +49,11 @@ function dateToBR(date?: string) {
   return `${day}/${month}/${year}`;
 }
 
-function getPeriodStartDate(endDate?: string, period = "7") {
-  if (!endDate) return "";
 
-  const date = new Date(`${endDate}T00:00:00`);
-  const days = Number(period);
 
-  if (!Number.isFinite(days)) return endDate;
-
-  date.setDate(date.getDate() - days);
-  return date.toISOString().slice(0, 10);
-}
-
-function periodLabel(period: string, startDate?: string, endDate?: string) {
-  if (period === "custom") {
-    if (startDate && endDate) return `${dateToBR(startDate)} a ${dateToBR(endDate)}`;
-    return "período personalizado";
-  }
-
-  const option = periodOptions.find((item) => item.value === period);
-  return option?.label ?? `${period} dias`;
+function periodLabel(startDate?: string, endDate?: string) {
+  if (startDate && endDate) return `${dateToBR(startDate)} a ${dateToBR(endDate)}`;
+  return "período personalizado";
 }
 
 function growthPercent(player?: PlayerSummary): string {
@@ -89,10 +63,6 @@ function growthPercent(player?: PlayerSummary): string {
 
 function getPlayerGrowth(player?: PlayerSummary) {
   return player?.crescimentoPeriodo ?? 0;
-}
-
-function formatEventDate(date: string) {
-  return dateToBR(date);
 }
 
 export function DashboardTabs({
@@ -107,7 +77,6 @@ export function DashboardTabs({
   const [active, setActive] = useState<TabId>("resumo");
   const [query, setQuery] = useState("");
   const [pos, setPos] = useState("Todas");
-  const [period, setPeriod] = useState("7");
   const [timelineMode, setTimelineMode] = useState<"total" | "growth">("total");
   const [customStartDate, setCustomStartDate] = useState(latestDate ?? "");
   const [customEndDate, setCustomEndDate] = useState(latestDate ?? "");
@@ -118,12 +87,10 @@ export function DashboardTabs({
   const [refreshing, setRefreshing] = useState(false);
   const [showEvents, setShowEvents] = useState(false);
 
-  const effectiveStartDate =
-    period === "custom" ? customStartDate : getPeriodStartDate(latestDate, period);
+  const effectiveStartDate = customStartDate;
+  const effectiveEndDate = customEndDate;
 
-  const effectiveEndDate = period === "custom" ? customEndDate : latestDate ?? "";
-
-  const labelPeriodo = periodLabel(period, effectiveStartDate, effectiveEndDate);
+  const labelPeriodo = periodLabel(effectiveStartDate, effectiveEndDate);
 
   const selectedEvents =
     effectiveStartDate && effectiveEndDate
@@ -132,35 +99,21 @@ export function DashboardTabs({
 
   const players = useMemo(() => {
     return initialPlayers.map((p) => {
-      if (period === "custom") {
-        const customGrowth = getGrowthBetweenDates(
-          rows,
-          p.nome,
-          customStartDate,
-          customEndDate
-        );
-
-        return {
-          ...p,
-          crescimento7d: customGrowth.growth,
-          crescimentoPeriodo: customGrowth.growth,
-          crescimentoPercentualPeriodo: customGrowth.percent,
-        };
-      }
-
-      const crescimentoPeriodo = getGrowthByPeriod(p, period);
-      const baseAnterior = p.seguidores - crescimentoPeriodo;
-
-      const crescimentoPercentualPeriodo =
-        baseAnterior > 0 ? (crescimentoPeriodo / baseAnterior) * 100 : 0;
+      const customGrowth = getGrowthBetweenDates(
+        rows,
+        p.username,
+        customStartDate,
+        customEndDate
+      );
 
       return {
         ...p,
-        crescimentoPeriodo,
-        crescimentoPercentualPeriodo,
+        crescimento7d: customGrowth.growth,
+        crescimentoPeriodo: customGrowth.growth,
+        crescimentoPercentualPeriodo: customGrowth.percent,
       };
     });
-  }, [initialPlayers, period, rows, customStartDate, customEndDate]);
+  }, [initialPlayers, rows, customStartDate, customEndDate]);
 
   const names = players.map((p) => p.nome);
   const pA = players.find((p) => p.nome === (a || names[0])) ?? players[0];
@@ -193,8 +146,6 @@ export function DashboardTabs({
   }
 
   const periodSelectorProps = {
-    period,
-    setPeriod,
     customStartDate,
     setCustomStartDate,
     customEndDate,
@@ -618,8 +569,6 @@ export function DashboardTabs({
       {active === "termometro" && (
         <ThermometerSection
           players={players}
-          period={period}
-          setPeriod={setPeriod}
           customStartDate={customStartDate}
           setCustomStartDate={setCustomStartDate}
           customEndDate={customEndDate}
@@ -631,8 +580,6 @@ export function DashboardTabs({
 }
 
 type PeriodSelectorProps = {
-  period: string;
-  setPeriod: (v: string) => void;
   customStartDate: string;
   setCustomStartDate: (v: string) => void;
   customEndDate: string;
@@ -640,50 +587,32 @@ type PeriodSelectorProps = {
 };
 
 function PeriodSelector({
-  period,
-  setPeriod,
   customStartDate,
   setCustomStartDate,
   customEndDate,
   setCustomEndDate,
 }: PeriodSelectorProps) {
   return (
-    <div className="flex flex-col gap-3">
-      <select
-        value={period}
-        onChange={(e) => setPeriod(e.target.value)}
-        className="rounded-xl border p-3 font-bold"
-      >
-        {periodOptions.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.value === "custom" ? "Personalizado" : `Crescimento ${option.label}`}
-          </option>
-        ))}
-      </select>
+    <div className="grid gap-3 md:grid-cols-2">
+      <label className="flex flex-col gap-1 text-xs font-black uppercase text-brasil-suave">
+        Data inicial
+        <input
+          type="date"
+          value={customStartDate}
+          onChange={(e) => setCustomStartDate(e.target.value)}
+          className="rounded-xl border p-3 text-sm font-bold text-slate-700"
+        />
+      </label>
 
-      {period === "custom" && (
-        <div className="grid gap-3 md:grid-cols-2">
-          <label className="flex flex-col gap-1 text-xs font-black uppercase text-brasil-suave">
-            Data inicial
-            <input
-              type="date"
-              value={customStartDate}
-              onChange={(e) => setCustomStartDate(e.target.value)}
-              className="rounded-xl border p-3 text-sm font-bold text-slate-700"
-            />
-          </label>
-
-          <label className="flex flex-col gap-1 text-xs font-black uppercase text-brasil-suave">
-            Data final
-            <input
-              type="date"
-              value={customEndDate}
-              onChange={(e) => setCustomEndDate(e.target.value)}
-              className="rounded-xl border p-3 text-sm font-bold text-slate-700"
-            />
-          </label>
-        </div>
-      )}
+      <label className="flex flex-col gap-1 text-xs font-black uppercase text-brasil-suave">
+        Data final
+        <input
+          type="date"
+          value={customEndDate}
+          onChange={(e) => setCustomEndDate(e.target.value)}
+          className="rounded-xl border p-3 text-sm font-bold text-slate-700"
+        />
+      </label>
     </div>
   );
 }
@@ -793,8 +722,6 @@ function FilteredSection(props: any) {
         </select>
 
         <PeriodSelector
-          period={props.period}
-          setPeriod={props.setPeriod}
           customStartDate={props.customStartDate}
           setCustomStartDate={props.setCustomStartDate}
           customEndDate={props.customEndDate}
@@ -923,33 +850,18 @@ function Compare({
 
 function ThermometerSection({
   players,
-  period,
-  setPeriod,
   customStartDate,
   setCustomStartDate,
   customEndDate,
   setCustomEndDate,
 }: {
   players: PlayerSummary[];
-  period: string;
-  setPeriod: (v: string) => void;
   customStartDate: string;
   setCustomStartDate: (v: string) => void;
   customEndDate: string;
   setCustomEndDate: (v: string) => void;
 }) {
-  const thresholdByPeriod: Record<string, number> = {
-    "1": 10000,
-    "3": 20000,
-    "5": 30000,
-    "7": 50000,
-    "10": 70000,
-    "15": 100000,
-    "30": 150000,
-    custom: 50000,
-  };
-
-  const threshold = thresholdByPeriod[period] ?? 50000;
+  const threshold = 50000;
   const high = players.filter((p) => getPlayerGrowth(p) > threshold);
   const mid = players.filter((p) => getPlayerGrowth(p) <= threshold && getPlayerGrowth(p) > 0);
   const low = players.filter((p) => getPlayerGrowth(p) <= 0);
@@ -960,8 +872,6 @@ function ThermometerSection({
 
       <div className="mt-5">
         <PeriodSelector
-          period={period}
-          setPeriod={setPeriod}
           customStartDate={customStartDate}
           setCustomStartDate={setCustomStartDate}
           customEndDate={customEndDate}

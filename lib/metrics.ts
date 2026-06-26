@@ -159,44 +159,25 @@ export function getGrowthByPeriod(p: PlayerSummary, period: string) {
 
 export function getGrowthBetweenDates(
   rows: InstagramSnapshot[],
-  playerName: string,
+  playerKey: string,
   startDate: string,
   endDate: string
 ) {
-  const key = normalizeKey(playerName);
+  const key = normalizeKey(playerKey);
 
-  const playerRows = rows
-    .filter((r) => {
-      const nomeKey = normalizeKey(r.nome);
-      const usernameKey = normalizeKey(r.username);
+  const exactUsernameRows = rows.filter((r) => normalizeKey(r.username) === key);
+  const exactNameRows = rows.filter((r) => normalizeKey(r.nome) === key);
 
-      return (
-        nomeKey === key ||
-        nomeKey.includes(key) ||
-        key.includes(nomeKey) ||
-        usernameKey === key ||
-        usernameKey.includes(key) ||
-        key.includes(usernameKey)
-      );
-    })
+  const playerRows = (exactUsernameRows.length ? exactUsernameRows : exactNameRows)
     .sort((a, b) => a.dataColeta.localeCompare(b.dataColeta));
 
   const start = playerRows.filter((r) => r.dataColeta <= startDate).slice(-1)[0];
   const end = playerRows.filter((r) => r.dataColeta <= endDate).slice(-1)[0];
 
-  if (!start || !end) {
-    return {
-      growth: 0,
-      percent: 0,
-    };
-  }
+  if (!start || !end) return { growth: 0, percent: 0 };
 
   const growth = end.seguidores - start.seguidores;
-
   const percent = start.seguidores > 0 ? (growth / start.seguidores) * 100 : 0;
 
-  return {
-    growth,
-    percent,
-  };
+  return { growth, percent };
 }
