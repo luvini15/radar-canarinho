@@ -25,6 +25,14 @@ export const keyEvents: KeyEvent[] = [
   },
 
   {
+  date: "2026-06-11",
+  title: "Abertura da Copa do Mundo",
+  type: "evento",
+  description: "Início oficial da Copa do Mundo 2026.",
+  impact: "Alto",
+  },
+
+  {
     date: "2026-06-13",
     title: "Brasil x Marrocos",
     type: "jogo",

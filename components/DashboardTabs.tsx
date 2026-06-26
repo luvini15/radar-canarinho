@@ -108,6 +108,7 @@ export function DashboardTabs({
   const [query, setQuery] = useState("");
   const [pos, setPos] = useState("Todas");
   const [period, setPeriod] = useState("7");
+  const [timelineMode, setTimelineMode] = useState<"total" | "growth">("total");
   const [customStartDate, setCustomStartDate] = useState(latestDate ?? "");
   const [customEndDate, setCustomEndDate] = useState(latestDate ?? "");
   const [order, setOrder] = useState("seguidores");
@@ -443,6 +444,9 @@ export function DashboardTabs({
             <TimelineChart
               rows={rows}
               selected={[pA?.nome, pB?.nome].filter(Boolean) as string[]}
+              events={selectedEvents}
+              startDate={effectiveStartDate}
+              endDate={effectiveEndDate}
             />
           </div>
 
@@ -522,7 +526,7 @@ export function DashboardTabs({
         <section>
           <h2 className="section-title">Linha do tempo</h2>
 
-          <div className="mt-5 grid gap-3 md:grid-cols-4">
+          <div className="mt-5 grid gap-3 md:grid-cols-5">
             <input
               className="rounded-xl border p-3"
               placeholder="Pesquisar jogador para adicionar"
@@ -551,10 +555,19 @@ export function DashboardTabs({
               <option value="crescimento">Maior crescimento</option>
             </select>
 
+            <select
+              value={timelineMode}
+              onChange={(e) => setTimelineMode(e.target.value as "total" | "growth")}
+              className="rounded-xl border p-3"
+            >
+              <option value="total">Seguidores totais</option>
+              <option value="growth">Ganho acumulado</option>
+            </select>
+
             <PeriodSelector {...periodSelectorProps} />
           </div>
 
-                    <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-3 flex flex-wrap gap-2">
             {filtered.slice(0, 16).map((p) => (
               <button
                 key={p.username}
@@ -577,7 +590,14 @@ export function DashboardTabs({
           </div>
 
           <div className="mt-5">
-            <TimelineChart rows={rows} selected={selected} />
+            <TimelineChart
+              rows={rows}
+              selected={selected}
+              events={selectedEvents}
+              mode={timelineMode}
+              startDate={effectiveStartDate}
+              endDate={effectiveEndDate}
+            />
           </div>
 
           <div className="mt-5 grid gap-4 md:grid-cols-2">

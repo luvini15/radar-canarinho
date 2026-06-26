@@ -163,8 +163,22 @@ export function getGrowthBetweenDates(
   startDate: string,
   endDate: string
 ) {
+  const key = normalizeKey(playerName);
+
   const playerRows = rows
-    .filter((r) => r.nome === playerName)
+    .filter((r) => {
+      const nomeKey = normalizeKey(r.nome);
+      const usernameKey = normalizeKey(r.username);
+
+      return (
+        nomeKey === key ||
+        nomeKey.includes(key) ||
+        key.includes(nomeKey) ||
+        usernameKey === key ||
+        usernameKey.includes(key) ||
+        key.includes(usernameKey)
+      );
+    })
     .sort((a, b) => a.dataColeta.localeCompare(b.dataColeta));
 
   const start = playerRows.filter((r) => r.dataColeta <= startDate).slice(-1)[0];
@@ -178,6 +192,7 @@ export function getGrowthBetweenDates(
   }
 
   const growth = end.seguidores - start.seguidores;
+
   const percent = start.seguidores > 0 ? (growth / start.seguidores) * 100 : 0;
 
   return {
