@@ -78,7 +78,7 @@ export function DashboardTabs({
   const [query, setQuery] = useState("");
   const [pos, setPos] = useState("Todas");
   const [timelineMode, setTimelineMode] = useState<"total" | "growth">("total");
-  const [customStartDate, setCustomStartDate] = useState(latestDate ?? "");
+  const [customStartDate, setCustomStartDate] = useState("2026-05-18");
   const [customEndDate, setCustomEndDate] = useState(latestDate ?? "");
   const [order, setOrder] = useState("seguidores");
   const [selected, setSelected] = useState<string[]>([]);
@@ -122,16 +122,34 @@ export function DashboardTabs({
   const filtered = players
     .filter((p) => pos === "Todas" || p.grupoPosicao === pos)
     .filter((p) => !query || p.nome.toLowerCase().includes(query.toLowerCase()))
-    .sort((x, y) =>
-      order === "crescimento"
-        ? getPlayerGrowth(y) - getPlayerGrowth(x)
-        : y.seguidores - x.seguidores
-    );
+    .sort((x, y) => {
+      if (order === "crescimento") {
+        return getPlayerGrowth(y) - getPlayerGrowth(x);
+      }
+
+      if (order === "crescimentoPercentual") {
+        return (
+          (y.crescimentoPercentualPeriodo ?? 0) -
+          (x.crescimentoPercentualPeriodo ?? 0)
+        );
+      }
+
+      return y.seguidores - x.seguidores;
+    })
+    .map((p, index) => ({
+      ...p,
+      posicaoRanking: index + 1,
+    }));
 
   const leader = players[0];
   const second = players[1];
   const total = players.reduce((acc, p) => acc + p.seguidores, 0);
   const topGrowth = [...players].sort((x, y) => getPlayerGrowth(y) - getPlayerGrowth(x))[0];
+  const topGrowthPercent = [...players].sort(
+    (x, y) =>
+      (y.crescimentoPercentualPeriodo ?? 0) -
+      (x.crescimentoPercentualPeriodo ?? 0)
+  )[0];
   const top10sum = players.slice(0, 10).reduce((acc, p) => acc + p.seguidores, 0);
   const top10pct = total ? (top10sum / total) * 100 : 0;
 
@@ -242,7 +260,7 @@ export function DashboardTabs({
               detail={`${formatCompact(leader?.seguidores ?? 0)} seguidores`}
             />
             <HeroKpi
-              title={`Maior crescimento (${labelPeriodo})`}
+              title={`Maior crescimento absoluto (${labelPeriodo})`}
               value={topGrowth?.nome ?? "-"}
               sub={`+${formatCompact(getPlayerGrowth(topGrowth))} seguidores`}
               detail={`${growthPercent(topGrowth)} no período`}
@@ -327,7 +345,7 @@ export function DashboardTabs({
           {...periodSelectorProps}
         >
           <div className="mt-5">
-            <RankingTable players={filtered} />
+            <RankingTable players={filtered} order={order}/>
           </div>
 
           <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -341,8 +359,10 @@ export function DashboardTabs({
               title="Leitura do ranking"
               text={
                 order === "crescimento"
-                  ? "O ranking está ordenado pelo maior crescimento no período selecionado."
-                  : "O ranking está ordenado pela maior base total de seguidores."
+                  ? "O ranking está ordenado pelo maior crescimento absoluto no período selecionado."
+                  : order === "crescimentoPercentual"
+                    ? "O ranking está ordenado pelo maior crescimento percentual no período selecionado."
+                    : "O ranking está ordenado pela maior base total de seguidores."
               }
             />
           </div>
@@ -360,7 +380,8 @@ export function DashboardTabs({
               className="rounded-xl border p-3 font-bold"
             >
               <option value="seguidores">Mais seguidores</option>
-              <option value="crescimento">Maior crescimento</option>
+              <option value="crescimento">Maior crescimento absoluto</option>
+              <option value="crescimentoPercentual">Maior crescimento percentual</option>
             </select>
 
             <PeriodSelector {...periodSelectorProps} />
@@ -503,7 +524,8 @@ export function DashboardTabs({
               className="rounded-xl border p-3"
             >
               <option value="seguidores">Mais seguidores</option>
-              <option value="crescimento">Maior crescimento</option>
+              <option value="crescimento">Maior crescimento absoluto</option>
+              <option value="crescimentoPercentual">Maior crescimento percentual</option>
             </select>
 
             <select
@@ -558,9 +580,15 @@ export function DashboardTabs({
             />
             <Insight
               title="Destaque do período"
-              text={`${topGrowth?.nome} é o maior crescimento em ${labelPeriodo}, com +${formatFull(
-                getPlayerGrowth(topGrowth)
-              )} seguidores.`}
+              text={
+                order === "crescimentoPercentual"
+                  ? `${topGrowthPercent?.nome} é o maior crescimento percentual em ${labelPeriodo}, com ${growthPercent(
+                      topGrowthPercent
+                    )}.`
+                  : `${topGrowth?.nome} é o maior crescimento absoluto em ${labelPeriodo}, com +${formatFull(
+                      getPlayerGrowth(topGrowth)
+                    )} seguidores.`
+              }
             />
           </div>
         </section>
@@ -718,7 +746,8 @@ function FilteredSection(props: any) {
           onChange={(e: any) => props.setOrder(e.target.value)}
         >
           <option value="seguidores">Mais seguidores</option>
-          <option value="crescimento">Maior crescimento</option>
+          <option value="crescimento">Maior crescimento absoluto</option>
+          <option value="crescimentoPercentual">Maior crescimento percentual</option>
         </select>
 
         <PeriodSelector
@@ -742,11 +771,20 @@ function Lineup({
   order: string;
 }) {
   const sort = (arr: PlayerSummary[]) =>
-    [...arr].sort((a, b) =>
-      order === "crescimento"
-        ? getPlayerGrowth(b) - getPlayerGrowth(a)
-        : b.seguidores - a.seguidores
-    );
+    [...arr].sort((a, b) => {
+      if (order === "crescimento") {
+        return getPlayerGrowth(b) - getPlayerGrowth(a);
+      }
+
+      if (order === "crescimentoPercentual") {
+        return (
+          (b.crescimentoPercentualPeriodo ?? 0) -
+          (a.crescimentoPercentualPeriodo ?? 0)
+        );
+      }
+
+      return b.seguidores - a.seguidores;
+    });
 
   const pick = (g: string, n: number) =>
     sort(players.filter((p) => p.grupoPosicao === g)).slice(0, n);
@@ -762,9 +800,11 @@ function Lineup({
               <div key={p.username} className="w-40">
                 <PlayerCard player={p} compact />
 
-                {order === "crescimento" && (
+                {order !== "seguidores" && (
                   <div className="mt-2 rounded-full bg-green-100 px-3 py-2 text-center text-xs font-black text-green-700">
-                    +{formatFull(getPlayerGrowth(p))} seguidores
+                    {order === "crescimentoPercentual"
+                      ? growthPercent(p)
+                      : `+${formatFull(getPlayerGrowth(p))} seguidores`}
                   </div>
                 )}
               </div>

@@ -5,7 +5,13 @@ function formatPercent(value: number) {
   return `${(value ?? 0).toFixed(2).replace(".", ",")}%`;
 }
 
-export function RankingTable({ players }: { players: PlayerSummary[] }) {
+export function RankingTable({
+  players,
+  order,
+}: {
+  players: PlayerSummary[];
+  order: string;
+}) {
   return (
     <div className="overflow-hidden rounded-3xl bg-white shadow-sm">
       <div className="grid grid-cols-[48px_1fr_140px_170px_120px] gap-3 bg-brasil-azulEscuro px-5 py-3 text-xs font-black uppercase tracking-wider text-white/60 max-md:grid-cols-[40px_1fr_100px]">
@@ -38,13 +44,28 @@ export function RankingTable({ players }: { players: PlayerSummary[] }) {
           </div>
 
           <div className="max-md:hidden">
-            <div className="font-black text-brasil-verde">
-              +{formatFull(p.crescimentoPeriodo ?? 0)}
-            </div>
+            {order === "crescimentoPercentual" ? (
+              <>
+                <div className="font-black text-brasil-verde">
+                  {formatPercent(p.crescimentoPercentualPeriodo)}
+              </div>
+
             <div className="text-xs font-bold text-slate-500">
-              {formatPercent(p.crescimentoPercentualPeriodo)}
-            </div>
-          </div>
+              +{formatFull(p.crescimentoPeriodo ?? 0)} seguidores
+                </div>
+                </>
+                ) : (
+                <>
+              <div className="font-black text-brasil-verde">
+                +{formatFull(p.crescimentoPeriodo ?? 0)}
+                  </div>
+
+      <div className="text-xs font-bold text-slate-500">
+        {formatPercent(p.crescimentoPercentualPeriodo)}
+      </div>
+    </>
+  )}
+</div>
 
           <div className="max-md:hidden text-sm text-brasil-suave">
             {p.grupoPosicao}
